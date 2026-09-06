@@ -1,0 +1,7 @@
+name: ai-clarity-hook
+version: "0.1.0-alpha.1"
+description: Conservative output eligibility scaffold; passthrough only, inference blocked.
+hooks:
+  - transform_llm_output
+provides_hooks:
+  - transform_llm_output

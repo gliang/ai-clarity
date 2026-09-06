@@ -20,6 +20,12 @@ The host model performs the rewrite and meaning check. Python handles scoped pre
 
 ## Product documents
 
+An experimental [hook scaffold](adapters/hermes/README.md#output-hook-scaffold-tested-partial)
+is now available for review. It has deterministic eligibility and fail-open
+passthrough only; subprocess rewriting is hard-blocked because the inspected
+Hermes oneshot path auto-approves tools/hooks. It is not installed and does not
+repair automatic activation yet. [Design and streaming evidence](docs/HOOK_DESIGN.md).
+
 - [Product requirements and release criteria](docs/PRODUCT.md): canonical scope, personalization, context presets, bilingual behavior, privacy, and deferred work.
 - [Contributor instructions](AGENTS.md): implementation boundaries and verification expectations.
 

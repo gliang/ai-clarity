@@ -2,6 +2,8 @@
 
 ## Status
 
+Hook-activation checkpoint: **50 test executions passed** (including the existing 43); `scripts/verify.py` also passed with no static errors. The new hook is a tested gate + passthrough partial, not an activation fix: subprocess rewriting is hard-blocked due to oneshot auto-approval, and helper integration is deferred. Desktop streaming/preview paths were source-traced, not live-tested. See [HOOK_DESIGN.md](HOOK_DESIGN.md).
+
 Experimental alpha, not a completed v0.1 release. The implementation and fixes below were independently exercised. On 2026-09-06, the owner approved live Hermes installation and public alpha publication. The installed package hashes and preservation of the existing SOUL.md content were verified; the deterministic suite again passed all 43 executions.
 
 Environment: Python 3.9.6, macOS/Darwin arm64. No third-party Python dependencies were installed.
