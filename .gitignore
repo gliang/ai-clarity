@@ -1,0 +1,33 @@
+# Local operating system and editor state
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Private reader data: store outside the repo by default
+private/
+.local/
+runtime/
+user-data/
+reader-profiles/
+feedback-history/
+transcripts/
+exports/
+
+# Generated development artifacts
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+build/
+.gstack/
