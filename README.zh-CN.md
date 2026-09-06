@@ -20,6 +20,11 @@
 
 ## 产品文档
 
+新增供审查的实验性[输出钩子骨架](adapters/hermes/README.md#output-hook-scaffold-tested-partial)，
+仅实现确定性资格筛选和失败时保留原文的直通模式。经检查，Hermes oneshot 路径会自动批准
+工具及 shell 钩子，因此子进程改写被硬性禁用。插件未安装，尚未修复自动激活问题。
+详见[设计及流式输出证据](docs/HOOK_DESIGN.md)。
+
 - [产品需求与验收标准](docs/PRODUCT.md)：英文主文档，记录范围、个性化、场景预设、双语行为、隐私和延期事项。
 - [开发约定](AGENTS.md)：实现边界和验证要求。
 
