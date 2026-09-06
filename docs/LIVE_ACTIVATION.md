@@ -20,6 +20,7 @@ Both probes started new `hermes chat --oneshot` processes outside the project di
 | --- | --- |
 | English, configured default `qwen3.8-flash` | Completed with zero tool calls. Skipped the required skill/helper workflow. The answer also overstated implemented backoff as a working/completed mitigation; the source did not establish that verification. |
 | Simplified Chinese, explicit `gpt-6-astra` via `openai-codex` | Automatically loaded AI Clarity and its references. Attempted `prepare`, but the non-interactive host's command approval policy blocked both attempted invocation forms. Returned a plain answer with the blocker disclosed; did not complete capture/render. The answer distinguished implementation from verified effectiveness. |
+| Owner-initiated Desktop session (research request, `qwen3.8-flash`) | Received the installed instruction but never loaded AI Clarity; answered without prepare, comparison, or widget. First owner-observed confirmation of the automatic-invocation gap on the real Desktop surface. |
 
 The test summaries were checked against the exact sessions' stored tool-call records. Neither probe proves a completed automatic comparison workflow. The second probe did not alter the default model. No approval policy was weakened to make the test pass.
 

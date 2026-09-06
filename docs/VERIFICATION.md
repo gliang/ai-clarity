@@ -25,6 +25,8 @@ Test locations:
 
 For a repeatable test log plus syntax, JSON, skill metadata, and relative-document-link checks, run `python3 scripts/verify.py`. It writes actual output under ignored `.local/verification/`. It does not perform inference or browser testing.
 
+CI runs the same verification on push/PR to `main` across ubuntu-latest and macos-latest with Python 3.9 and 3.12; all four matrix jobs are required status checks alongside mandatory review. This provides the first Linux execution evidence (see PR #1 run: all four jobs green).
+
 ## Parent RED/GREEN record
 
 These are observed failures, not reconstructed results:
@@ -79,7 +81,7 @@ A live Hermes subagent performed real rewrites (its own model output, not fixtur
 - **Headless browser:** the installed browse binary failed to launch because its required Chromium headless executable was absent. No browser dependency was installed. HTML was parsed in tests, not visually or interactively verified in a browser.
 - **Live Hermes:** owner-approved default-profile installation is verified. A fresh CLI-host session received the instruction but skipped the helper workflow. Hidden-turn clicks, a fresh Desktop session, and streaming behavior remain unverified. See [live activation](LIVE_ACTIVATION.md).
 - **Human evaluation:** no participants, comprehension score, preference-uplift result, or validated self-improvement claim.
-- **Linux/Windows:** Linux execution is not verified; Windows is not supported by the POSIX helper.
+- **Linux:** now verified by CI (ubuntu-latest, Python 3.9/3.12, `scripts/verify.py` green); Windows is not supported by the POSIX helper.
 - **Contributor status:** the previously blocked `AGENTS.md` correction was applied after explicit owner approval.
 - **Initial worker:** interrupted before completion; subsequent verification and repairs were performed independently.
 
