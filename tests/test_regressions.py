@@ -40,8 +40,8 @@ class BoundaryTests(unittest.TestCase):
             root = pathlib.Path(temporary)
             for language, (description, context) in expected.items():
                 record = c.dispatch(root, 'test', language, 'capture', {
-                    'original': 'A. B.', 'scope': {'context': 'code', 'language': language}})
-                envelope = {'id': record['id'], 'version': record['version'], 'scope': record['scope_token']}
+                    'original': 'A. B.', 'revision':'A and B.', 'meaning_checked':True, 'scope': {'context': 'code', 'language': language}})
+                envelope = {'id': record['id'], 'version': record['version'], 'scope': record['scope_token'], 'passage_id':record['changes'][0]['id']}
                 pending = c.dispatch(root, 'test', language, 'action', {**envelope, 'action': 'steps'})
                 record = c.dispatch(root, 'test', language, 'revise', {
                     **envelope, 'version': pending['version'], 'revision': '1. A.\n2. B.', 'meaning_checked': True})
@@ -88,23 +88,23 @@ class BoundaryTests(unittest.TestCase):
         record = c.capture(state, {'original': 'A. B.', 'revision': 'A and B.',
                                    'meaning_checked': True})
         pending = c.action(state, {'id': record['id'], 'version': 1,
-                                   'scope': record['scope_token'], 'action': 'steps'})
+                                   'scope': record['scope_token'], 'passage_id':record['changes'][0]['id'], 'action': 'steps'})
         self.assertEqual(pending['version'], 2)
         # The superseded v1 widget can no longer deliver satisfaction feedback.
         with self.assertRaises(ValueError):
             c.action(state, {'id': record['id'], 'version': 1,
-                             'scope': record['scope_token'], 'action': 'helpful'})
+                             'scope': record['scope_token'], 'passage_id':record['changes'][0]['id'], 'action': 'helpful'})
         # While the edit is pending, even a correctly versioned feedback click is
         # refused instead of stranding the pending edit.
         with self.assertRaises(ValueError):
             c.action(state, {'id': record['id'], 'version': 2,
-                             'scope': record['scope_token'], 'action': 'helpful'})
+                             'scope': record['scope_token'], 'passage_id':record['changes'][0]['id'], 'action': 'helpful'})
         revised = c.revise(state, {'id': record['id'], 'version': 2,
-                                   'scope': record['scope_token'], 'revision': '1. A.\n2. B.',
+                                   'scope': record['scope_token'], 'passage_id':record['changes'][0]['id'], 'revision': '1. A.\n2. B.',
                                    'meaning_checked': True})
         self.assertIsNone(revised['pending'])
         c.action(state, {'id': record['id'], 'version': revised['version'],
-                         'scope': record['scope_token'], 'action': 'helpful'})
+                         'scope': record['scope_token'], 'passage_id':record['changes'][0]['id'], 'action': 'helpful'})
 
     def test_corrupted_stored_revision_fails_closed(self):
         state = c.initial()

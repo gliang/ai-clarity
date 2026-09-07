@@ -120,3 +120,9 @@ A minimal manual experiment may be used during development, but it is not a v0.1
 ## Deferred to keep the first release small
 
 Separate skills per profession, a visual preset builder, automatically changing user preferences without approval, simultaneous dual-language output, new-model training, a browser extension, universal guaranteed interception across agents, and shared learning from private conversations are outside v0.1.
+
+## Owner decision: passage-scoped comparisons and controls
+
+Comparisons and editing/helpful/not-helpful controls belong to the paragraphs or sentences actually rewritten, not to the entire article. Show the complete accepted answer outside the widget; do not duplicate unchanged text inside it. Each changed passage shows its revision first and its original in a collapsible comparison. No rewrite means no card and no buttons, at every version. Rejected or unreviewed rewrites must not produce actionable widgets.
+
+The host model identifies exact changed passages after semantic review. The helper validates their deterministic mapping and assigns opaque passage identities. Actions, feedback, and preference evidence bind to response/version/scope and the selected passage; edits preserve all untouched revised bytes and the exact whole original. Maintain readable paired light/dark theme tokens with standalone fallbacks, without a visual redesign. Legacy callers may need conservative paragraph mappings or a documented whole-answer compatibility fallback; this is not semantic passage selection.

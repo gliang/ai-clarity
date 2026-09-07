@@ -11,8 +11,8 @@ An open-source skill project to make AI answers easier to understand and follow,
 - Instruct the host to check human-facing answers automatically and rewrite only when useful; compliance is best-effort.
 - Use lightweight presets for general explanations, academic research, business reports, product design, and code explanations.
 - Support English and Chinese, including localized controls and explicit language overrides.
-- Show the clearer answer inline with an expandable comparison of the actual original and revised versions.
-- Offer contextual edits and feedback without requiring a slash command.
+- Show the complete clearer answer inline, outside the widget. Compact comparisons show only changed passages, revision first and collapsible original; unchanged text is not duplicated. No rewrite means no card or buttons.
+- Offer passage-targeted edits and feedback without requiring a slash command. The model identifies exact changed sentences/paragraphs after semantic review; the helper validates mappings and assigns opaque IDs.
 - Save approved preferences privately and apply the relevant ones in later sessions. Support inspection, editing, undo, deletion, and export.
 - Preserve meaning, citations, code, commands, warnings, and uncertainty.
 
@@ -49,6 +49,7 @@ Staging copies the skill into an isolated test home without activating it. See t
 - Interactive comparison retains up to 20 answer snapshots, with up to five prior revisions per snapshot. They expire after 24 hours when the helper next runs; there is no background deletion timer. Feedback and undo history are bounded separately. See [data controls](skills/ai-clarity/references/helper-workflow.md).
 - The configured host model receives the text and selected preferences it needs. Local storage does not mean local inference. The helper adds no telemetry or network calls.
 - Exact-output requests bypass storage and UI. Literal checks cannot prove factual or semantic preservation; the host must review those separately.
+- Legacy captures without passage mappings use conservative aligned paragraphs, or one whole-answer fallback when necessary. Schema 1 migrates to schema 2: approved preferences, undo history, and labeled legacy feedback remain; old response snapshots, pending offers, and widgets are retired so old actions cannot be silently retargeted. See the [helper protocol](skills/ai-clarity/references/helper-workflow.md).
 - Automatic invocation is not reliable across models: a fresh live-session test skipped the required helper workflow. Real Hermes button clicks and improved human comprehension remain unverified. Standalone HTML buttons do not call an agent.
 
 See [handoff](docs/HANDOFF.md), [verification](docs/VERIFICATION.md), and the [evaluation protocol](evals/README.md).

@@ -63,7 +63,7 @@ class ResponseTests(StorageTests):
         return self.call("capture", {"original":"Try `run()`; it may fail.", "revision":"It may fail. Try `run()`.",
             "protected":["may fail"], "meaning_checked":True, "scope":{"context":"code", "language":"en"}, **extra})
     def action(self, record, action):
-        return self.call("action", {"id":record["id"], "version":record["version"], "scope":record["scope_token"], "action":action})
+        return self.call("action", {"id":record["id"], "version":record["version"], "scope":record["scope_token"], "passage_id":record['changes'][0]['id'], "action":action})
     def test_edit_consent_and_stale_identity(self):
         r = self.capture()
         pending = self.action(r, "steps")
@@ -72,7 +72,7 @@ class ResponseTests(StorageTests):
         self.assertEqual(self.call("profile", {"op":"inspect"})["preferences"], [])
         with self.assertRaises(ValueError): self.action(r, "remember")
         with self.assertRaises(ValueError): self.action(pending, "helpful")
-        revised = self.call("revise", {"id":r["id"], "version":pending["version"], "scope":r["scope_token"],
+        revised = self.call("revise", {"id":r["id"], "version":pending["version"], "scope":r["scope_token"], "passage_id":r['changes'][0]['id'],
             "revision":"1. Try `run()`; it may fail.", "meaning_checked":True})
         self.assertEqual(revised["original"], r["original"])
         self.assertEqual(revised["version"], 3)
@@ -94,13 +94,14 @@ class ResponseTests(StorageTests):
     def test_failed_revision_noop_exact_and_optout(self):
         r = self.capture()
         pending = self.action(r, "shorter")
-        r2 = self.call("revise", {"id":r["id"], "version":pending["version"], "scope":r["scope_token"], "revision":"Run it safely", "meaning_checked":True})
+        r2 = self.call("revise", {"id":r["id"], "version":pending["version"], "scope":r["scope_token"], "passage_id":r['changes'][0]['id'], "revision":"Run it safely", "meaning_checked":True})
         self.assertEqual(r2["revision"], r["revision"])
         self.assertIsNone(r2["proposal"])
         self.assertEqual(self.call("capture", {"original":"{}", "exact_output":True}), {"text":"{}", "status":"bypass"})
         before = self.call("profile", {"op":"inspect"})["feedback"]
         self.call("profile", {"op":"disable"})
-        self.action(r2, "helpful")
+        with self.assertRaises(ValueError):
+            self.call('action', {'id':r2['id'], 'version':r2['version'], 'scope':r2['scope_token'], 'passage_id':r['changes'][0]['id'], 'action':'helpful'})
         self.assertEqual(self.call("profile", {"op":"inspect"})["feedback"], before)
 
 class LifecycleTests(StorageTests):
@@ -114,10 +115,10 @@ class LifecycleTests(StorageTests):
         self.assertEqual(c.prepare({"source":"Hello", "scope":{"language":"zh-Hant"}}, [])["language"], "zh-Hant")
         self.assertEqual(c.prepare({"source":"你好", "current":{"language":"en"}}, [])["language"], "en")
     def test_failed_edits_not_satisfaction(self):
-        r = self.call("capture", {"original":"Maybe `x`"})
-        pending = self.call("action", {"id":r["id"], "version":r["version"], "scope":r["scope_token"], "action":"steps"})
-        r2 = self.call("revise", {"id":r["id"], "version":pending["version"], "scope":r["scope_token"], "revision":"x", "meaning_checked":True})
-        self.assertEqual(r2["revision"], "Maybe `x`")
+        r = self.call("capture", {"original":"Maybe `x`", "revision":"Possibly `x`", "meaning_checked":True})
+        pending = self.call("action", {"id":r["id"], "version":r["version"], "scope":r["scope_token"], "passage_id":r['changes'][0]['id'], "action":"steps"})
+        r2 = self.call("revise", {"id":r["id"], "version":pending["version"], "scope":r["scope_token"], "passage_id":r['changes'][0]['id'], "revision":"x", "meaning_checked":True})
+        self.assertEqual(r2["revision"], "Possibly `x`")
         self.assertEqual(self.call("profile", {"op":"inspect"})["feedback"][-1]["outcome"], "fallback")
 
 class HardenedFlowTests(StorageTests):
@@ -127,8 +128,8 @@ class HardenedFlowTests(StorageTests):
         self.assertIsNone(result["directive"])
         self.assertEqual(result["markdown"], "Yes.")
     def test_remember_undo_bound_to_profile_change(self):
-        r = self.call("capture", {"original":"A. B."})
-        envelope = {"id":r["id"], "version":r["version"], "scope":r["scope_token"]}
+        r = self.call("capture", {"original":"A. B.", "revision":"A and B.", "meaning_checked":True})
+        envelope = {"id":r["id"], "version":r["version"], "scope":r["scope_token"], "passage_id":r['changes'][0]['id']}
         pending = self.call("action", {**envelope, "action":"steps"})
         r = self.call("revise", {**envelope, "version":pending["version"], "revision":"1. A.\n2. B.", "meaning_checked":True})
         r = self.call("action", {**envelope, "version":r["version"], "action":"remember"})

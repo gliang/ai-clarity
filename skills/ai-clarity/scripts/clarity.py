@@ -113,10 +113,10 @@ def identity(value):
     return hashlib.sha256(value.encode()).hexdigest()[:32]
 
 def initial():
-    return {"schema":1, "profile_version":0, "enabled":True, "preferences":[], "undo":[], "feedback":[], "responses":{}}
+    return {"schema":2, "profile_version":0, "enabled":True, "preferences":[], "undo":[], "feedback":[], "responses":{}}
 
 def validate_state(state):
-    if not isinstance(state, dict) or set(state) != set(initial()) or state["schema"] != 1:
+    if not isinstance(state, dict) or set(state) != set(initial()) or type(state['schema']) is not int or state["schema"] not in (1, 2):
         raise ValueError("Unsupported or malformed state; preserve file for recovery")
     if type(state["profile_version"]) is not int or state["profile_version"] < 0: raise ValueError("Malformed profile version")
     if type(state["enabled"]) is not bool or not isinstance(state["responses"], dict):
@@ -136,6 +136,11 @@ def validate_state(state):
     if len(state["undo"]) > 10 or len(state["feedback"]) > 100 or len(state["responses"]) > 20:
         raise ValueError("State retention limit exceeded")
     for entry in state["feedback"]:
+        if state['schema'] == 2:
+            if entry.get('legacy_response_feedback') is True and entry['passage_id'] is None:
+                pass
+            else:
+                opaque(entry['passage_id'])
         opaque(entry["id"])
         scope(entry["scope"])
         if type(entry["version"]) is not int or entry["version"] < 1 or type(entry["approved"]) is not bool:
@@ -158,6 +163,20 @@ def validate_state(state):
         resolved, _ = checked(record["original"], record["revision"], record["protected"], True)
         if resolved != record["revision"]:
             raise ValueError("Stored revision fails preservation check; refusing to load")
+        if state['schema'] == 2:
+            if record['status'] == 'model-checked':
+                validate_passages(record['original'], record['revision'], record['changes'])
+                if not record['changes']: raise ValueError('Model-checked response has no changes')
+            elif record['changes'] != []:
+                raise ValueError('Non-actionable response contains changes')
+            if record['status'] == 'unchanged' and record['original'] != record['revision']:
+                raise ValueError('Inconsistent unchanged response')
+            ids = {p['id'] for p in record['changes']}
+            for field, target in [('pending', 'pending_passage_id'), ('proposal', 'proposal_passage_id'), ('undo_profile_version', 'undo_passage_id')]:
+                if record[field] is None:
+                    if record[target] is not None: raise ValueError('Orphan passage reference')
+                elif record[target] not in ids:
+                    raise ValueError('Unknown passage reference')
         if record["pending"] is not None and record["pending"] not in EDIT_ACTIONS:
             raise ValueError("Malformed pending action")
         if record["proposal"] is not None:
@@ -172,6 +191,12 @@ def validate_state(state):
             string(version["text"])
             if type(version["version"]) is not int or not 1 <= version["version"] < record["version"]:
                 raise ValueError("Malformed historical version")
+    if state['schema'] == 1:
+        # Old response-wide capabilities cannot be safely rebound to passages.
+        # Keep approved profile data/history, retire ephemeral responses/offers.
+        state['responses'] = {}
+        state['feedback'] = [dict(e, passage_id=None, legacy_response_feedback=True) for e in state['feedback']]
+        state['schema'] = 2
     return state
 
 def validate_pref(pref):
@@ -285,11 +310,71 @@ def record_for(state, data, version=False):
         raise ValueError("Stale response version or mismatched scope; reload widget")
     return record
 
-def feedback(state, record, selection, approved=False):
+def feedback(state, record, selection, passage_id, approved=False):
     if state["enabled"]:
         entry = {"id":record["id"], "version":record["version"], "scope":record["scope"],
-                 "selection":selection, "approved":approved, "outcome":record["status"]}
+                 "passage_id":passage_id, "selection":selection, "approved":approved, "outcome":record["status"]}
         state["feedback"] = (state["feedback"] + [entry])[-100:]
+
+def passage_records(original, revision, changes):
+    if not isinstance(changes, list) or not changes or len(changes) > 100:
+        raise ValueError("Expected non-empty passage mappings")
+    records = []
+    for change in changes:
+        if not isinstance(change, dict) or set(change) != {"original", "revision"}:
+            raise ValueError("Passage input accepts original and revision only")
+        before, after = string(change["original"]), string(change["revision"])
+        if not before.strip() or not after.strip() or before == after:
+            raise ValueError("Passages must be non-empty and changed")
+        positions = []
+        for document, text in ((original, before), (revision, after)):
+            hits = list(re.finditer("(?=" + re.escape(text) + ")", document))
+            if len(hits) != 1: raise ValueError("Ambiguous or nonexistent passage")
+            positions.append(hits[0].start())
+        a, b = positions
+        records.append({"id":uuid.uuid4().hex, "original":before, "revision":after,
+                        "original_start":a, "original_end":a + len(before),
+                        "start":b, "end":b + len(after)})
+    records.sort(key=lambda p: p["original_start"])
+    validate_passages(original, revision, records)
+    return records
+
+
+def validate_passages(original, revision, passages):
+    if not isinstance(passages, list) or len(passages) > 100:
+        raise ValueError("Invalid passages")
+    a = b = 0
+    ids = set()
+    for p in passages:
+        if set(p) != {"id", "original", "revision", "original_start", "original_end", "start", "end"}:
+            raise ValueError("Malformed passage")
+        pid = opaque(p["id"])
+        if pid in ids: raise ValueError("Duplicate passage identity")
+        ids.add(pid)
+        x, y, start, end = (p[k] for k in ("original_start", "original_end", "start", "end"))
+        if any(type(v) is not int for v in (x, y, start, end)) or not (a <= x < y <= len(original) and b <= start < end <= len(revision)):
+            raise ValueError("Overlapping or invalid passage spans")
+        if (not string(p["original"]).strip() or not string(p["revision"]).strip()
+                or p["original"] == p["revision"] or original[x:y] != p["original"]
+                or revision[start:end] != p["revision"] or original[a:x] != revision[b:start]):
+            raise ValueError("Passage mapping cannot reconstruct revision")
+        a, b = y, end
+    if original[a:] != revision[b:]: raise ValueError("Passage mapping cannot reconstruct revision")
+
+
+def legacy_passages(original, revision):
+    if original == revision: return []
+    # Position-aligned paragraphs only; never infer semantic sentence boundaries.
+    before = re.split(r'(\r?\n[ \t]*\r?\n)', original)
+    after = re.split(r'(\r?\n[ \t]*\r?\n)', revision)
+    if len(before) == len(after) and before[1::2] == after[1::2]:
+        try:
+            return passage_records(original, revision, [
+                {"original":a, "revision":b} for a,b in zip(before[::2], after[::2]) if a != b])
+        except ValueError:
+            pass
+    return passage_records(original, revision, [{"original":original, "revision":revision}])
+
 
 def capture(state, data):
     original = string(data.get("original"))
@@ -301,58 +386,93 @@ def capture(state, data):
     record = {"id":rid, "scope_token":uuid.uuid4().hex, "version":1,
               "scope":route["scope"], "source_language":source_language(original),
               "original":original, "revision":revision, "protected":protected,
-              "status":status, "created":time.time(), "pending":None, "proposal":None, "undo_profile_version":None, "versions":[]}
+              "pending_passage_id":None, "proposal_passage_id":None, "undo_passage_id":None,
+              "changes":(passage_records(original, revision, data["changes"]) if "changes" in data else legacy_passages(original, revision)) if status == "model-checked" else [], "status":status, "created":time.time(), "pending":None, "proposal":None, "undo_profile_version":None, "versions":[]}
     state["responses"] = {**state["responses"], rid:record}
     return record
 
+def selected_passage(record, data):
+    pid = opaque(data.get('passage_id'))
+    if record['status'] != 'model-checked': raise ValueError('No actionable passages')
+    for p in record['changes']:
+        if p['id'] == pid: return p
+    raise ValueError('Unknown or retired passage')
+
+
 def action(state, data):
     record = record_for(state, data, True)
+    passage = selected_passage(record, data)
+    pid = passage['id']
     selected = data.get("action")
     if selected not in ACTIONS: raise ValueError("Unknown action")
     if selected in EDIT_ACTIONS:
         if record["pending"]: raise ValueError("An edit is already pending")
-        record = {**record, "pending":selected, "proposal":None, "version":record["version"] + 1}
+        record = {**record, "pending":selected, "pending_passage_id":pid, "proposal":None,
+                  "proposal_passage_id":None, "undo_passage_id":None, "undo_profile_version":None,
+                  "version":record["version"] + 1}
     elif selected == "undo":
+        if record.get('undo_passage_id') != pid: raise ValueError('Mismatched undo passage')
         if record["undo_profile_version"] != state["profile_version"] or not state["undo"]:
             raise ValueError("Profile changed since this offer; inspect before undoing")
         profile(state, {"op":"undo"})
-        record = {**record, "undo_profile_version":None, "version":record["version"] + 1}
+        record = {**record, "undo_profile_version":None, "undo_passage_id":None, "version":record["version"] + 1}
     elif selected in ("remember", "not_now", "edit_preference"):
         proposal = record["proposal"]
-        if not proposal: raise ValueError("No specific preference offered for this version")
+        if not proposal or record.get('proposal_passage_id') != pid: raise ValueError("No specific preference offered for this passage/version")
         if selected == "remember":
-            profile(state, {"op":"set", **proposal, "approved":True, "evidence":record["id"] + ":" + str(record["version"])})
+            profile(state, {"op":"set", **proposal, "approved":True, "evidence":record["id"] + ":" + str(record["version"]) + ':' + pid})
         if selected == "edit_preference":
             return {**record, "request":"Ask user for replacement preference and explicit approval; do not save inferred text."}
-        feedback(state, record, selected, selected == "remember")
-        record = {**record, "proposal":None, "version":record["version"] + 1,
+        feedback(state, record, selected, pid, selected == "remember")
+        record = {**record, "proposal":None, "proposal_passage_id":None, "version":record["version"] + 1,
+                  "undo_passage_id":pid if selected == "remember" else None,
                   "undo_profile_version":state["profile_version"] if selected == "remember" else None}
     else:
         if record["pending"]: raise ValueError("An edit is pending; complete it before giving satisfaction feedback")
-        feedback(state, record, selected)
+        feedback(state, record, selected, pid)
         record = {**record, "version":record["version"] + 1}
     state["responses"][record["id"]] = record
     return record
 
 def revise(state, data):
     record = record_for(state, data, True)
+    passage = selected_passage(record, data)
+    pid = passage['id']
+    if record.get('pending_passage_id') != pid: raise ValueError('Mismatched pending passage')
     pending = record["pending"]
     if pending not in EDIT_ACTIONS: raise ValueError("Request an edit before revising")
+    replacement = string(data.get('revision'))
+    if not replacement.strip(): raise ValueError('Empty passage revision')
     protected = list(dict.fromkeys(record["protected"] + data.get("protected", [])))
-    revision, status = checked(record["original"], data.get("revision"), protected, data.get("meaning_checked"))
+    candidate = record['revision'][:passage['start']] + replacement + record['revision'][passage['end']:]
+    revision, status = checked(record["original"], candidate, protected, data.get("meaning_checked"))
+    changes = []
+    if status == 'model-checked':
+        shift = len(replacement) - len(passage['revision'])
+        for p in record['changes']:
+            updated = dict(p)
+            if p['id'] == pid:
+                updated.update(revision=replacement, end=p['start'] + len(replacement))
+            elif p['start'] >= passage['end']:
+                updated.update(start=p['start'] + shift, end=p['end'] + shift)
+            if updated['original'] != updated['revision']: changes.append(updated)
+        validate_passages(record['original'], revision, changes)
     new_scope = dict(record["scope"])
     if status != "fallback":
         if pending.startswith("context_"): new_scope["context"] = pending[8:]
         if pending.startswith("language_"):
             lang = pending[9:]
             new_scope["language"] = record["source_language"] if lang == "original" else lang
-    key_value = PROPOSALS.get(pending) if status == "model-checked" and revision != record["revision"] else None
+    key_value = PROPOSALS.get(pending) if status == "model-checked" and revision != record["revision"] and any(p['id'] == pid for p in changes) else None
     proposal = {"key":key_value[0], "value":key_value[1], "scope":new_scope} if key_value else None
     record = {**record, "revision":record["revision"] if status == "fallback" else revision,
               "status":status, "scope":new_scope, "version":record["version"] + 1,
-              "protected":protected, "pending":None, "proposal":proposal,
+              "changes":changes, "pending_passage_id":None,
+              "proposal_passage_id":pid if proposal else None,
+              "undo_passage_id":None, "undo_profile_version":None,
+              "protected":record['protected'] if status == 'fallback' else protected, "pending":None, "proposal":proposal,
               "versions":(record["versions"] + [{"version":record["version"], "text":record["revision"]}])[-5:]}
-    feedback(state, record, pending)
+    feedback(state, record, pending, pid)
     state["responses"][record["id"]] = record
     return record
 
@@ -378,41 +498,49 @@ LABELS = {
 CONTEXT_LABELS = {"en":["General", "Research", "Business", "Product", "Code"],
 "zh-Hans":["通用", "研究", "商业", "产品", "代码"], "zh-Hant":["通用", "研究", "商業", "產品", "程式碼"]}
 
-def render(record, directory):
-    if record["version"] == 1 and record["original"] == record["revision"]:
-        return {"path":None, "directive":None, "markdown":record["original"], "status":record["status"]}
+def passage_html(record, passage):
     lang = record["scope"]["language"]
     labels = LABELS[lang]
     escape = html.escape
     def button(action_name, label):
-        payload = {"id":record["id"], "version":record["version"], "scope":record["scope_token"], "action":action_name}
-        prompt = "AI_CLARITY " + json.dumps(payload, separators=(",", ":"))
-        return "<button type=\"button\" data-hermes-send=\"" + escape(prompt, quote=True) + "\">" + escape(label) + "</button>"
-    controls = "".join(button(a, labels[i]) for a,i in [("shorter",3),("steps",4),("example",5),("helpful",6),("not_helpful",7)])
-    contexts = "".join(button("context_"+a, label) for a,label in zip(CONTEXTS, CONTEXT_LABELS[lang]))
-    languages = "".join(button("language_"+a, label) for a,label in zip((*LANGUAGES,"original"), ("English","简体中文","繁體中文",labels[1])))
-    proposal = ""
-    if record["proposal"]:
+        payload = {"id":record["id"], "version":record["version"], "scope":record["scope_token"],
+                   "passage_id":passage["id"], "action":action_name}
+        return '<button type="button" data-hermes-send="' + escape('AI_CLARITY ' + json.dumps(payload, separators=(',', ':')), quote=True) + '">' + escape(label) + '</button>'
+    controls = ''.join(button(a, labels[i]) for a,i in [('shorter',3),('steps',4),('example',5),('helpful',6),('not_helpful',7)])
+    contexts = ''.join(button('context_'+a, label) for a,label in zip(CONTEXTS, CONTEXT_LABELS[lang]))
+    languages = ''.join(button('language_'+a, label) for a,label in zip((*LANGUAGES,'original'), ('English','简体中文','繁體中文',labels[1])))
+    proposal = ''
+    if record['proposal'] and record.get('proposal_passage_id') == passage['id']:
         descriptions = {
-            "en": ["Use numbered steps first.", "Be concise while keeping necessary detail.", "Include a concrete example when useful."],
-            "zh-Hans": ["优先用编号步骤说明。", "保留必要细节，表达更简洁。", "有助于理解时，给出具体示例。"],
-            "zh-Hant": ["優先用編號步驟說明。", "保留必要細節，表達更精簡。", "有助於理解時，提供具體範例。"],
-        }
-        offer = record["proposal"]
-        choice = list(PROPOSALS.values()).index((offer["key"], offer["value"]))
-        context_label = CONTEXT_LABELS[lang][CONTEXTS.index(offer["scope"]["context"])]
-        language_label = dict(zip(LANGUAGES, ("English", "简体中文", "繁體中文")))[offer["scope"]["language"]]
-        scope_text = " / ".join([context_label, language_label] + ([offer["scope"]["topic"]] if "topic" in offer["scope"] else []))
-        proposal = "<aside><p>" + escape(descriptions[lang][choice]) + "</p><small>" + escape(labels[15] + ": " + scope_text) + "</small><div>" + "".join(button(a,labels[i]) for a,i in [("remember",8),("edit_preference",10),("not_now",9)]) + "</div></aside>"
-    if record["undo_profile_version"] is not None:
-        saved, undo = {"en":("Preference saved for the displayed scope.", "Undo"),
-                       "zh-Hans":("已保存此范围的偏好。", "撤销"), "zh-Hant":("已儲存此範圍的偏好。", "復原")}[lang]
-        proposal += "<aside>" + saved + button("undo", undo) + "</aside>"
-    translation = labels[12] if record["source_language"] != lang else ""
+            'en':['Use numbered steps first.', 'Be concise while keeping necessary detail.', 'Include a concrete example when useful.'],
+            'zh-Hans':['优先用编号步骤说明。', '保留必要细节，表达更简洁。', '有助于理解时，给出具体示例。'],
+            'zh-Hant':['優先用編號步驟說明。', '保留必要細節，表達更精簡。', '有助於理解時，提供具體範例。']}
+        offer = record['proposal']
+        choice = list(PROPOSALS.values()).index((offer['key'], offer['value']))
+        language_label = dict(zip(LANGUAGES, ('English', '简体中文', '繁體中文')))[offer['scope']['language']]
+        scope_text = ' / '.join([CONTEXT_LABELS[lang][CONTEXTS.index(offer['scope']['context'])], language_label] + ([offer['scope']['topic']] if 'topic' in offer['scope'] else []))
+        proposal = '<aside><p>' + escape(descriptions[lang][choice]) + '</p><small>' + escape(labels[15] + ': ' + scope_text) + '</small><div>' + ''.join(button(a, labels[i]) for a,i in [('remember',8),('edit_preference',10),('not_now',9)]) + '</div></aside>'
+    if record['undo_profile_version'] is not None and record.get('undo_passage_id') == passage['id']:
+        saved, undo = {'en':('Preference saved for the displayed scope.', 'Undo'),
+                       'zh-Hans':('已保存此范围的偏好。', '撤销'), 'zh-Hant':('已儲存此範圍的偏好。', '復原')}[lang]
+        proposal += '<aside>' + saved + button('undo', undo) + '</aside>'
+    translation = labels[12] if record['source_language'] != lang else ''
+    return '<section><h4>' + escape(labels[2] + ' (' + lang + ')') + '</h4><pre>' + escape(passage['revision']) + '</pre><small>' + escape(translation) + '</small><details><summary>' + escape(labels[0]) + '</summary><h4>' + escape(labels[1] + ' (' + record['source_language'] + ')') + '</h4><pre>' + escape(passage['original']) + '</pre></details><div>' + controls + '</div><details><summary>' + labels[13] + '</summary>' + contexts + '</details><details><summary>' + labels[14] + '</summary>' + languages + '</details>' + proposal + '</section>'
+
+
+def render(record, directory):
+    if record["status"] != "model-checked" or record["original"] == record["revision"] or not record['changes']:
+        path = directory / (opaque(record["id"]) + ".html")
+        if path.exists() or path.is_symlink(): path.unlink()
+        return {"path":None, "directive":None, "markdown":record["revision"], "status":record["status"]}
+    lang = record["scope"]["language"]
+    labels = LABELS[lang]
+    escape = html.escape
+    cards = ''.join(passage_html(record, p) for p in record['changes'])
     page = """<!doctype html><html lang=""" + escape(lang, quote=True) + """><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">
 <style>body{margin:0;background:var(--card,#fff);color:var(--foreground,#222);font-family:inherit}main{max-width:64rem;text-align:start}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;line-height:1.55}button{font:inherit;color:inherit;background:var(--card,transparent);border:1px solid var(--border,#999);border-radius:5px;padding:.3rem .55rem;margin:.15rem .3rem .15rem 0;cursor:pointer}small{color:var(--muted-foreground,#666)}summary{cursor:pointer}aside{border-inline-start:2px solid var(--accent,#777);padding:.5rem}code{white-space:pre-wrap;overflow-wrap:anywhere}</style><main>
-""" + "<pre>" + escape(record["revision"]) + "</pre><small>" + escape(translation) + "</small><details><summary>" + escape(labels[0]) + "</summary><h4>" + escape(labels[1]+" ("+record["source_language"]+")") + "</h4><pre>" + escape(record["original"]) + "</pre><h4>" + escape(labels[2]+" ("+lang+")") + "</h4><pre>" + escape(record["revision"]) + "</pre></details><div>" + controls + "</div><details><summary>" + labels[13] + "</summary>" + contexts + "</details><details><summary>" + labels[14] + "</summary>" + languages + "</details>" + proposal + "<p><small>" + labels[11] + "</small></p></main></html>"
+""" + cards + "<p><small>" + labels[11] + "</small></p></main></html>"
     path = directory / (opaque(record["id"]) + ".html")
     if path.is_symlink(): raise ValueError("Symlink widget rejected")
     temporary = directory / (uuid.uuid4().hex + ".tmp")
@@ -426,7 +554,7 @@ def render(record, directory):
     finally:
         if temporary.exists(): temporary.unlink()
     fence = "`" * (max([len(x) for x in re.findall(r"`+", record["original"] + record["revision"])] + [2]) + 1)
-    markdown = labels[2] + "\n" + fence + "text\n" + record["revision"] + "\n" + fence + "\n\n" + labels[1] + "\n" + fence + "text\n" + record["original"] + "\n" + fence
+    markdown = '\n\n'.join(labels[2] + '\n' + fence + 'text\n' + p['revision'] + '\n' + fence + '\n' + labels[1] + '\n' + fence + 'text\n' + p['original'] + '\n' + fence + '\npassage_id=' + p['id'] for p in record['changes'])
     return {"path":str(path), "directive":"::preview{file=" + json.dumps(str(path)) + "}", "markdown":markdown,
             "identity":{"id":record["id"], "version":record["version"], "scope":record["scope_token"]}}
 

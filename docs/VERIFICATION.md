@@ -1,5 +1,29 @@
 # Verification report
 
+## Passage-scoped checkpoint
+
+Local implementation on `widget-contrast-fix`, preserving the body contrast pair from `e9cbf3c`. No live Hermes files were changed, no host was restarted, and no browser dependency was installed.
+
+Final executed checks: `python3 -m unittest discover -s tests -v` passed **63 executions** (51 existing plus 12 passage tests); `python3 scripts/verify.py` passed the same 63 with 28 static files checked and no static errors; `git diff --check` passed. The targeted passage suite passed all 12. Actual final suite output and machine-readable results are under ignored `.local/verification/unittest.log` and `.local/verification/result.json`. RED observations below are from terminal runs, not reconstructed log files.
+
+Observed RED→GREEN slices (each targeted run used `python3 -m unittest discover -s tests -p test_passages.py -v`):
+
+- `test_noop_has_no_widget_even_after_version_history`: RED returned an HTML path at version 9; GREEN returns null path/directive and an empty actionable list.
+- `test_explicit_passage_mapping_is_validated_and_reconstructs`: RED stored zero passages for an explicit mapping; GREEN assigns helper IDs/spans and rejects invalid mappings. Additional rejection subcases cover empty values, caller IDs, duplicate/overlapping regions, ambiguous occurrences in either document, reordered spans, unchanged pairs, and incomplete reconstruction.
+- `test_legacy_capture_uses_paragraphs_or_whole_fallback`: RED returned no changed paragraph; GREEN selects only paragraph 2, with a whole-answer compatibility fallback for changed paragraph structure.
+- `test_widget_only_contains_changed_passage_and_opaque_controls`: RED HTML contained the unchanged introduction; GREEN HTML/Markdown omit it, show the revised passage once, and put passage IDs on every control. Includes an explicitly selected sentence inside one paragraph.
+- `test_selected_passage_edit_preserves_other_bytes_and_binds_evidence`: RED accepted a missing passage ID and consumed the pending version (subsequent call then errored stale); GREEN rejects wrong/missing/unknown IDs without consuming the edit, preserves passage 1 and CRLF separators, and binds preference evidence/feedback to passage 2.
+- `test_persisted_passages_fail_closed_and_v1_migration_retires_widgets`: RED loaded missing passage fields; GREEN rejects corrupt schema 2 spans/IDs/references/status and migrates valid schema 1 data while retiring old snapshots/widgets. Approved preferences, profile version, undo history, and explicitly labeled legacy feedback survive.
+- `test_zero_passages_and_rejected_edit_never_leave_actionable_widget`: RED fallback Markdown incorrectly returned the initial original rather than the previously accepted revision; GREEN retains accepted text without controls and deletes the obsolete widget. Also covers zero passages and initial preservation rejection.
+- `test_new_edit_retires_old_undo_capability`: RED kept an older Undo capability during a new pending edit; GREEN retires it without changing approved profile history.
+- `test_passage_offer_preserves_localized_scope_and_saved_acknowledgement`: self-review found a rendering regression; RED showed `en` instead of the existing `English` scope label. GREEN restores localized scope labels and the saved acknowledgement in English/Hans/Hant.
+
+Additional preservation checks passed on first run and are not claimed as independent RED evidence: `test_first_passage_length_change_shifts_only_later_spans`, `test_reverting_passages_retires_ids_and_preserves_remaining_spans`, and `test_passage_html_is_data_and_css_inherits_paired_tokens`. The CSS test checks body card/foreground tokens and white/dark-text standalone fallbacks; buttons inherit that foreground and use the same card token or transparency over the body. No mismatch was demonstrated, so no CSS redesign or button color change was made. These are structural assertions, not light/dark screenshot proof.
+
+Compatibility: capture without `changes` remains supported, but old action/revise envelopes without `passage_id` now fail closed. Schema 1 is validated then migrated to schema 2; old response-wide capabilities are retired rather than guessed into passage capabilities. Explicit mappings remain model-reviewed input; the helper proves reconstruction, not semantic selection. Context/language controls also target a passage, changing response routing metadata but not untouched passage text. See the helper workflow for limits.
+
+Remaining gates: live Desktop light/dark screenshots, actual bridge button dispatch, removal/update behavior when the last card disappears, full-answer display outside the widget, model compliance with semantic passage selection, and independent semantic/human evaluation. This worker performed self-review and deterministic tests, not an independent reviewer-agent sign-off.
+
 ## Status
 
 Hook-activation checkpoint: **50 test executions passed** (including the existing 43); `scripts/verify.py` also passed with no static errors. The new hook is a tested gate + passthrough partial, not an activation fix: subprocess rewriting is hard-blocked due to oneshot auto-approval, and helper integration is deferred. Desktop streaming/preview paths were source-traced, not live-tested. See [HOOK_DESIGN.md](HOOK_DESIGN.md).
