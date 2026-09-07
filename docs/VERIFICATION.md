@@ -33,6 +33,8 @@ CI runs the same verification on push/PR to `main` across ubuntu-latest and maco
 
 These are observed failures, not reconstructed results:
 
+- Owner-reported, screenshot-grounded dark-theme widget contrast fix: the body background/foreground regression failed RED on `transparent` (1 test, 1 failure), then passed GREEN with `background:var(--card,#fff)` paired with `color:var(--foreground,#222)` (full suite: 51 passed); logs: `.local/verification/widget-contrast-{red,green}.log`; live Desktop visual recheck remains pending.
+
 1. The initial suite ran 35 tests with four subtest errors. The integration loop expected `original` on multi-turn evaluation protocols that intentionally have no source answer. The test now validates those protocol records separately and executes routing on input scenarios. The suite then passed.
 2. New exact-output tests failed because `prepare` and `capture` created private directories before bypassing output handling. Dispatch now bypasses storage first. Both regressions passed.
 3. An isolated source-copy run failed because tests assumed `.local` already existed. Test setup now creates its development artifact parent. The clean-copy run passed.

@@ -1,6 +1,7 @@
 """Parent review regressions: real storage and rendered behavior."""
 import json
 import pathlib
+import re
 import tempfile
 import unittest
 from test_clarity import c, ROOT
@@ -9,6 +10,25 @@ from test_clarity import c, ROOT
 class BoundaryTests(unittest.TestCase):
     def setUp(self):
         (ROOT / ".local").mkdir(exist_ok=True)
+
+    def test_widget_body_pairs_theme_background_and_foreground_with_readable_fallbacks(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.local') as temporary:
+            root = pathlib.Path(temporary)
+            record = c.dispatch(root, 'test', 'contrast', 'capture', {
+                'original': 'A. B.', 'revision': 'A and B.', 'meaning_checked': True})
+            page = c.dispatch(root, 'test', 'contrast', 'render', {'id': record['id']})
+            markup = pathlib.Path(page['path']).read_text()
+            style = re.search(r'<style>(.*?)</style>', markup, re.S)
+            self.assertIsNotNone(style)
+            body = re.search(r'\bbody\s*\{([^}]*)\}', style.group(1))
+            self.assertIsNotNone(body)
+            declarations = dict(part.strip().split(':', 1)
+                                for part in body.group(1).split(';') if part.strip())
+            # Check both declarations on the body itself, not button surfaces:
+            # host theme tokens must be paired, with readable standalone fallbacks.
+            self.assertEqual(
+                (declarations.get('background'), declarations.get('color')),
+                ('var(--card,#fff)', 'var(--foreground,#222)'))
 
     def test_preference_offer_is_readable_in_its_output_language(self):
         expected = {
