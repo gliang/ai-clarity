@@ -145,7 +145,7 @@ def validate_state(state):
         scope(entry["scope"])
         if type(entry["version"]) is not int or entry["version"] < 1 or type(entry["approved"]) is not bool:
             raise ValueError("Malformed feedback")
-        if entry["selection"] not in ACTIONS or entry["outcome"] not in ("unchanged", "fallback", "model-checked"):
+        if entry["selection"] not in ACTIONS or entry["outcome"] not in ("unchanged", "fallback", "model-checked", "model-checked-unmapped"):
             raise ValueError("Malformed feedback action")
     for rid, record in state["responses"].items():
         opaque(rid)
@@ -158,7 +158,7 @@ def validate_state(state):
             raise ValueError("Malformed response version")
         if type(record["created"]) not in (int, float) or not math.isfinite(record["created"]):
             raise ValueError("Malformed response timestamp")
-        if record["source_language"] not in LANGUAGES or record["status"] not in ("unchanged", "fallback", "model-checked"):
+        if record["source_language"] not in LANGUAGES or record["status"] not in ("unchanged", "fallback", "model-checked", "model-checked-unmapped"):
             raise ValueError("Malformed response status")
         resolved, _ = checked(record["original"], record["revision"], record["protected"], True)
         if resolved != record["revision"]:
@@ -169,6 +169,8 @@ def validate_state(state):
                 if not record['changes']: raise ValueError('Model-checked response has no changes')
             elif record['changes'] != []:
                 raise ValueError('Non-actionable response contains changes')
+            if record['status'] == 'model-checked-unmapped' and record['original'] == record['revision']:
+                raise ValueError('Unmapped response must contain an accepted rewrite')
             if record['status'] == 'unchanged' and record['original'] != record['revision']:
                 raise ValueError('Inconsistent unchanged response')
             ids = {p['id'] for p in record['changes']}
@@ -373,7 +375,10 @@ def legacy_passages(original, revision):
                 {"original":a, "revision":b} for a,b in zip(before[::2], after[::2]) if a != b])
         except ValueError:
             pass
-    return passage_records(original, revision, [{"original":original, "revision":revision}])
+    # If a legacy caller cannot supply a safe passage boundary, preserve the
+    # accepted revision but suppress comparison and controls rather than
+    # presenting the complete answer as one actionable passage.
+    return []
 
 
 def capture(state, data):
@@ -383,11 +388,15 @@ def capture(state, data):
     protected = data.get("protected", [])
     revision, status = checked(original, data.get("revision", original), protected, data.get("meaning_checked"))
     rid = uuid.uuid4().hex
+    changes = (passage_records(original, revision, data["changes"])
+               if "changes" in data else legacy_passages(original, revision)) if status == "model-checked" else []
+    if status == "model-checked" and not changes:
+        status = "model-checked-unmapped"
     record = {"id":rid, "scope_token":uuid.uuid4().hex, "version":1,
               "scope":route["scope"], "source_language":source_language(original),
               "original":original, "revision":revision, "protected":protected,
               "pending_passage_id":None, "proposal_passage_id":None, "undo_passage_id":None,
-              "changes":(passage_records(original, revision, data["changes"]) if "changes" in data else legacy_passages(original, revision)) if status == "model-checked" else [], "status":status, "created":time.time(), "pending":None, "proposal":None, "undo_profile_version":None, "versions":[]}
+              "changes":changes, "status":status, "created":time.time(), "pending":None, "proposal":None, "undo_profile_version":None, "versions":[]}
     state["responses"] = {**state["responses"], rid:record}
     return record
 

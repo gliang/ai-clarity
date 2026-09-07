@@ -46,11 +46,15 @@ class PassageTests(unittest.TestCase):
             with self.subTest(original=original), self.assertRaises(ValueError):
                 c.capture(self.state, dict(original=original, revision=revision, changes=changes, meaning_checked=True))
 
-    def test_legacy_capture_uses_paragraphs_or_whole_fallback(self):
+    def test_legacy_capture_uses_paragraphs_or_suppresses_controls(self):
         r = self.capture()
         self.assertEqual([p['original'] for p in r['changes']], ['Verbose second.'])
         r = c.capture(self.state, {'original':'A\n\nB', 'revision':'A plus B', 'meaning_checked':True})
-        self.assertEqual([p['original'] for p in r['changes']], ['A\n\nB'])
+        self.assertEqual(r['revision'], 'A plus B')
+        self.assertEqual(r['status'], 'model-checked-unmapped')
+        self.assertEqual(r['changes'], [])
+        self.assertIsNone(c.render(r, self.directory)['directive'])
+        c.validate_state(self.state)
 
     def test_widget_only_contains_changed_passage_and_opaque_controls(self):
         from test_integration import ButtonParser

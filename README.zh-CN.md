@@ -48,7 +48,7 @@ python3 adapters/hermes/stage.py stage --home "$PWD/.local/hermes-demo"
 - 交互对比最多保留 20 份回答快照，每份最多含五个历史版本。超过 24 小时后，在下次调用工具时清理；没有后台定时删除。反馈和撤销历史也有数量上限，见[数据控制说明](skills/ai-clarity/references/helper-workflow.md)。
 - 当前宿主模型会收到处理所需的文本及相关偏好。本地存储不等于本地推理；配套工具不添加遥测或网络请求。
 - 严格格式输出跳过存储和界面。受保护文本检查不能证明事实或原意完全保留，仍需模型另行核对。
-- 旧调用若未提供片段映射，工具优先采用保守的对齐段落，必要时退回整篇对比。存储从 schema 1 迁移到 schema 2：保留已批准偏好、撤销历史及标明旧格式的反馈；清除旧回答快照、待确认提案和组件，防止旧操作被悄悄转向新片段。详见[工具协议](skills/ai-clarity/references/helper-workflow.md)。
+- 旧调用若未提供片段映射，工具会采用保守的对齐段落。若无法安全映射片段，则保留已接受的回答，但不显示对比或按钮；绝不把整篇回答作为后备操作目标。存储从 schema 1 迁移到 schema 2：保留已批准偏好、撤销历史及标明旧格式的反馈；清除旧回答快照、待确认提案和组件，防止旧操作被悄悄转向新片段。详见[工具协议](skills/ai-clarity/references/helper-workflow.md)。
 - 自动调用的可靠性因模型而异：一次全新真实会话测试跳过了规定的工具流程。Hermes 按钮点击及人类理解效果仍未验证。独立 HTML 文件中的按钮不会调用代理。
 
 详见[交接说明](docs/HANDOFF.md)、[验证报告](docs/VERIFICATION.md)和[评测方法](evals/README.md)。
