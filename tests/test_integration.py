@@ -93,7 +93,7 @@ class IntegrationTests(unittest.TestCase):
             parser.feed(markup)
             self.assertNotIn("img", parser.tags)
             self.assertNotIn("script", parser.tags)
-            self.assertEqual(len(parser.prompts), 14)
+            self.assertEqual(len(parser.prompts), 5)
             for prompt in parser.prompts:
                 self.assertLess(len(prompt), 500)
                 envelope = json.loads(prompt.removeprefix("AI_CLARITY "))

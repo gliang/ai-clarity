@@ -1,6 +1,18 @@
 # Verification report
 
-## Passage-scoped checkpoint
+## Inline passage cards checkpoint (current)
+
+The helper now emits complete `inline_markdown` with one per-passage card at each changed location, or complete `markdown` fallback for unsupported preview hosts. Host instructions no longer require a full revision outside an end widget. Context/Language UI is removed; backend routing and legacy actions remain. See [observed RED/GREEN slices, pinned Hermes source, and limits](INLINE_CARDS_VERIFICATION.md).
+
+Executed on Python 3.9.6: targeted inline suite **11 passed**; required full `python3 -m unittest discover -s tests -v` **99 executions passed**; `python3 scripts/verify.py` **99 passed**, **32 static files**, no static errors; `git diff --check` passed. The working-tree total includes unrelated untracked `tests/test_inline.py`, which imports/inherits passage tests and is not part of this commit. An isolated candidate source copy excluding that file and `docs/BUSINESS_VALIDATION.md` passed **74 executions**, **30 static files**, no static errors. These are execution counts, not independent requirements.
+
+The first isolated-copy verification failed once in the existing concurrent fresh-process profile-write test with helper `FileNotFoundError`; an unchanged rerun passed. The intermittent failure's root cause is not established and is not claimed fixed by this card change. Real logs: `.local/verification/inline-clean-first-failure.log`, `inline-clean.log`, `unittest.log`, and `result.json`.
+
+No browser/Desktop visuals or real clicks were exercised in this checkpoint. Upstream source confirms standalone directive paragraphs can appear between normal paragraphs, but its frame read effect depends on path/streaming, not a file watcher. Stable file updates/deletion are tested; automatic mounted-frame refresh and restoration of prose after retiring a card remain host integration gates. No live install or push was performed.
+
+## Earlier passage-scoped checkpoint (superseded presentation)
+
+The following is historical evidence. Its “complete answer outside the widget” pattern and rendered Context/Language controls are superseded by the inline-card checkpoint above; earlier browser evidence does not verify the new per-passage layout.
 
 Local implementation on `widget-contrast-fix`, preserving the body contrast pair from `e9cbf3c`. No live Hermes files were changed, no host was restarted, and no browser dependency was installed.
 

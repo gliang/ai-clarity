@@ -243,6 +243,16 @@ def profile(state, data):
     state["profile_version"] += 1
     return {"enabled":state["enabled"], "preferences":state["preferences"], "undo_available":bool(state["undo"])}
 
+def cleanup_cards(directory, responses, only_response=None):
+    """Unlink only helper-owned names; never follow artifacts into other paths."""
+    live = {r['id'] + '-' + p['id'] for r in responses.values()
+            if r['status'] == 'model-checked' for p in r['changes']}
+    for path in directory.glob('*.html'):
+        match = re.fullmatch(r'([0-9a-f]{32})(?:-([0-9a-f]{32}))?', path.stem)
+        if match and (only_response is None or match[1] == only_response) and path.stem not in live:
+            path.unlink()
+
+
 def dispatch(root, user, host, command, data):
     if not isinstance(data, dict): raise ValueError("Expected JSON object")
     # Exact-output requests must not touch private state, even on first use.
@@ -269,9 +279,7 @@ def dispatch(root, user, host, command, data):
         state["responses"] = {k:v for k,v in state["responses"].items() if time.time() - v["created"] < 86400}
         # Expired answer text leaves before dispatch so a stale or failed click
         # cannot roll the privacy cleanup back into another retention window.
-        for generated in directory.glob("*.html"):
-            if re.fullmatch("[0-9a-f]{32}", generated.stem) and generated.stem not in state["responses"]:
-                generated.unlink()
+        cleanup_cards(directory, state['responses'])
         for leftover in directory.glob("*.tmp"):
             if re.fullmatch("[0-9a-f]{32}\.tmp", leftover.name): leftover.unlink()
         db.execute("INSERT OR REPLACE INTO state VALUES (1, ?)", (json.dumps(state, ensure_ascii=False),))
@@ -284,9 +292,7 @@ def dispatch(root, user, host, command, data):
         else: result = response_command(state, command, data, directory)
         db.execute("INSERT OR REPLACE INTO state VALUES (1, ?)", (json.dumps(state, ensure_ascii=False),))
         # Remove only generated response artifacts, while the scope lock is held.
-        for widget in directory.glob("*.html"):
-            if re.fullmatch("[0-9a-f]{32}", widget.stem) and widget.stem not in state["responses"]:
-                widget.unlink()
+        cleanup_cards(directory, state['responses'])
         db.commit()
         return result
     finally:
@@ -501,9 +507,9 @@ def response_command(state, command, data, directory):
     return result
 
 LABELS = {
-"en": ["Compare actual original", "Original", "Revised", "Shorter", "Show steps", "Add example", "Helpful", "Not helpful", "Remember", "Not now", "Edit preference", "Agent-backed actions require Hermes. In a standalone file these buttons do not rewrite text.", "Translation plus clarification", "Context", "Language", "Preference offered for this scope only"],
-"zh-Hans": ["对比真实原文", "原文", "修改版", "更简洁", "显示步骤", "添加示例", "有帮助", "没有帮助", "记住", "暂不保存", "编辑偏好", "智能编辑需要 Hermes。独立打开此文件时，按钮不会改写文本。", "翻译与澄清", "场景", "语言", "仅为此范围提出的偏好"],
-"zh-Hant": ["對比真實原文", "原文", "修改版", "更精簡", "顯示步驟", "新增範例", "有幫助", "沒有幫助", "記住", "暫不儲存", "編輯偏好", "智慧編輯需要 Hermes。單獨開啟此檔案時，按鈕不會改寫文字。", "翻譯與澄清", "情境", "語言", "僅為此範圍提出的偏好"]}
+"en": ["Show original", "Original", "Revised", "Shorten this passage", "Steps for this passage", "Example for this passage", "This passage helped", "This passage did not help", "Remember", "Not now", "Edit preference", "Agent-backed actions require Hermes. In a standalone file these buttons do not rewrite text.", "Translation plus clarification", "Context", "Language", "Preference offered for this scope only", "Revised by AI Clarity"],
+"zh-Hans": ["查看原文", "原文", "修改版", "精简这段", "这段改为步骤", "为这段添加示例", "这段有帮助", "这段没有帮助", "记住", "暂不保存", "编辑偏好", "智能编辑需要 Hermes。独立打开此文件时，按钮不会改写文本。", "翻译与澄清", "场景", "语言", "仅为此范围提出的偏好", "AI Clarity 已修改"],
+"zh-Hant": ["檢視原文", "原文", "修改版", "精簡這段", "這段改為步驟", "為這段新增範例", "這段有幫助", "這段沒有幫助", "記住", "暫不儲存", "編輯偏好", "智慧編輯需要 Hermes。單獨開啟此檔案時，按鈕不會改寫文字。", "翻譯與澄清", "情境", "語言", "僅為此範圍提出的偏好", "AI Clarity 已修改"]}
 CONTEXT_LABELS = {"en":["General", "Research", "Business", "Product", "Code"],
 "zh-Hans":["通用", "研究", "商业", "产品", "代码"], "zh-Hant":["通用", "研究", "商業", "產品", "程式碼"]}
 
@@ -516,8 +522,7 @@ def passage_html(record, passage):
                    "passage_id":passage["id"], "action":action_name}
         return '<button type="button" data-hermes-send="' + escape('AI_CLARITY ' + json.dumps(payload, separators=(',', ':')), quote=True) + '">' + escape(label) + '</button>'
     controls = ''.join(button(a, labels[i]) for a,i in [('shorter',3),('steps',4),('example',5),('helpful',6),('not_helpful',7)])
-    contexts = ''.join(button('context_'+a, label) for a,label in zip(CONTEXTS, CONTEXT_LABELS[lang]))
-    languages = ''.join(button('language_'+a, label) for a,label in zip((*LANGUAGES,'original'), ('English','简体中文','繁體中文',labels[1])))
+
     proposal = ''
     if record['proposal'] and record.get('proposal_passage_id') == passage['id']:
         descriptions = {
@@ -534,23 +539,43 @@ def passage_html(record, passage):
                        'zh-Hans':('已保存此范围的偏好。', '撤销'), 'zh-Hant':('已儲存此範圍的偏好。', '復原')}[lang]
         proposal += '<aside>' + saved + button('undo', undo) + '</aside>'
     translation = labels[12] if record['source_language'] != lang else ''
-    return '<section><h4>' + escape(labels[2] + ' (' + lang + ')') + '</h4><pre>' + escape(passage['revision']) + '</pre><small>' + escape(translation) + '</small><details><summary>' + escape(labels[0]) + '</summary><h4>' + escape(labels[1] + ' (' + record['source_language'] + ')') + '</h4><pre>' + escape(passage['original']) + '</pre></details><div>' + controls + '</div><details><summary>' + labels[13] + '</summary>' + contexts + '</details><details><summary>' + labels[14] + '</summary>' + languages + '</details>' + proposal + '</section>'
+    return '<section><pre>' + escape(passage['revision']) + '</pre><small>' + escape(labels[16] + ' (' + lang + ')' + (' · ' + translation if translation else '')) + '</small><details><summary>' + escape(labels[0]) + '</summary><h4>' + escape(labels[1] + ' (' + record['source_language'] + ')') + '</h4><pre>' + escape(passage['original']) + '</pre></details><div>' + controls + '</div>' + proposal + '</section>'
 
 
 def render(record, directory):
-    if record["status"] != "model-checked" or record["original"] == record["revision"] or not record['changes']:
-        path = directory / (opaque(record["id"]) + ".html")
-        if path.exists() or path.is_symlink(): path.unlink()
-        return {"path":None, "directive":None, "markdown":record["revision"], "status":record["status"]}
+    cleanup_cards(directory, {record['id']:record}, only_response=record['id'])
+    if record['status'] != 'model-checked' or not record['changes']:
+        return {'path':None, 'directive':None, 'cards':[], 'markdown':record['revision'],
+                'inline_markdown':record['revision'], 'status':record['status']}
+    cards = [render_card(record, directory, p) for p in record['changes']]
+    pieces, fallback, cursor = [], [], 0
+    for passage, card in zip(record['changes'], cards):
+        before = record['revision'][:passage['start']]
+        after = record['revision'][passage['end']:]
+        leading = '' if not before or re.search(r'\n[ \t]*\r?\n$', before) else '\n\n'
+        trailing = '' if not after or re.match(r'\r?\n[ \t]*\r?\n', after) else '\n\n'
+        pieces.extend((record['revision'][cursor:passage['start']], leading + card['directive'] + trailing))
+        fallback.extend((record['revision'][cursor:passage['start']], leading + card['markdown'] + trailing))
+        cursor = passage['end']
+    pieces.append(record['revision'][cursor:])
+    fallback.append(record['revision'][cursor:])
+    return {'cards':cards, 'inline_markdown':''.join(pieces),
+            'path':cards[0]['path'] if len(cards) == 1 else None,
+            'directive':cards[0]['directive'] if len(cards) == 1 else None,
+            'markdown':''.join(fallback),
+            'identity':{'id':record['id'], 'version':record['version'], 'scope':record['scope_token']}}
+
+
+def render_card(record, directory, passage):
     lang = record["scope"]["language"]
     labels = LABELS[lang]
     escape = html.escape
-    cards = ''.join(passage_html(record, p) for p in record['changes'])
+    cards = passage_html(record, passage)
     page = """<!doctype html><html lang=""" + escape(lang, quote=True) + """><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">
 <style>body{margin:0;background:var(--card,#fff);color:var(--foreground,#222);font-family:inherit}main{max-width:64rem;text-align:start}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;line-height:1.55}button{font:inherit;color:inherit;background:var(--card,transparent);border:1px solid var(--border,#999);border-radius:5px;padding:.3rem .55rem;margin:.15rem .3rem .15rem 0;cursor:pointer}small{color:var(--muted-foreground,#666)}summary{cursor:pointer}aside{border-inline-start:2px solid var(--accent,#777);padding:.5rem}code{white-space:pre-wrap;overflow-wrap:anywhere}</style><main>
 """ + cards + "<p><small>" + labels[11] + "</small></p></main></html>"
-    path = directory / (opaque(record["id"]) + ".html")
+    path = directory / (opaque(record['id']) + '-' + opaque(passage['id']) + '.html')
     if path.is_symlink(): raise ValueError("Symlink widget rejected")
     temporary = directory / (uuid.uuid4().hex + ".tmp")
     try:
@@ -563,9 +588,15 @@ def render(record, directory):
     finally:
         if temporary.exists(): temporary.unlink()
     fence = "`" * (max([len(x) for x in re.findall(r"`+", record["original"] + record["revision"])] + [2]) + 1)
-    markdown = '\n\n'.join(labels[2] + '\n' + fence + 'text\n' + p['revision'] + '\n' + fence + '\n' + labels[1] + '\n' + fence + 'text\n' + p['original'] + '\n' + fence + '\npassage_id=' + p['id'] for p in record['changes'])
-    return {"path":str(path), "directive":"::preview{file=" + json.dumps(str(path)) + "}", "markdown":markdown,
-            "identity":{"id":record["id"], "version":record["version"], "scope":record["scope_token"]}}
+    markdown = (labels[2] + ' (' + lang + ')\n' + fence + 'text\n' + passage['revision'] + '\n' + fence
+                + '\n' + labels[16] + '\n' + labels[1] + ' (' + record['source_language'] + ')\n'
+                + fence + 'text\n' + passage['original'] + '\n' + fence)
+    if record['source_language'] != lang: markdown += '\n' + labels[12]
+    markdown += '\n' + ' · '.join(labels[3:8])
+    markdown += '\nid=' + record['id'] + ' version=' + str(record['version']) + ' scope=' + record['scope_token'] + ' passage_id=' + passage['id']
+    directive = "::preview{file=" + json.dumps(str(path)) + "}"
+    return {"path":str(path), "directive":directive, "markdown":markdown,
+            "identity":{"id":record["id"], "version":record["version"], "scope":record["scope_token"], 'passage_id':passage['id']}}
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

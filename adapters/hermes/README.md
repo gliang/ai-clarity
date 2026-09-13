@@ -42,9 +42,21 @@ approve the target home and trusted scope IDs, then run stage/activate there. St
 a fresh host session through the normal owner workflow. Verify automatic skill
 following, relevant preference application, original/revised comparison, bilingual
 actions, stale-click rejection, edit-without-remember, explicit remember/undo, and
-updates to the same preview file. The real Hermes bridge must send hidden turns;
-static HTML cannot prove this. Use `::preview{file="absolute-path.html"}` on its own
-line; standalone controls must disclose that Hermes is required. Confirm uninstall
+updates to the same per-passage preview files. Emit the helper's complete
+`inline_markdown` verbatim: it interleaves unchanged prose with individual standalone
+`::preview{file="absolute-path.html"}` paragraphs at their exact positions. Never
+print a full revision and append a comparison widget. For unsupported preview hosts,
+emit the complete `markdown` fallback instead. Do not manually reconstruct either.
+Use `cards` to inspect files; singular path/directive fields are null for multiple
+cards too. Context and Language remain backend routing/actions, not visible controls.
+
+The real Hermes bridge must send hidden turns; static HTML cannot prove this.
+Re-render refreshes all surviving card files at stable paths and deletes retired
+files. Current upstream source reads frames on path/streaming changes; it does not
+establish that overwriting/deleting a file refreshes a settled card. Existing-message
+replacement and retired-card prose restoration need host support, not a second prose
+answer. See [source evidence and limits](../../docs/INLINE_CARDS_VERIFICATION.md).
+Standalone controls must disclose that Hermes is required. Confirm uninstall
 restores existing instructions before claiming reversible live behavior.
 
 中文：此适配器仅提供可审查的暂存、显式激活及卸载流程。测试只使用 `.local`

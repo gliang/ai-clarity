@@ -15,11 +15,17 @@ the configured host model receives answer text and selected preferences.
 
 Capture the actual full original and model-checked revision with `capture`, including
 `changes` containing exact model-reviewed original/revision passage pairs, without
-caller IDs. Show the complete accepted revision outside the widget. Then `render`
-and emit its non-null `::preview{file="absolute-path.html"}` directive separately.
-Null path/directive means no comparison or controls, at every version. Never duplicate
-unchanged text in a comparison; the helper returns changed passages only.
-Use the returned Markdown fallback if local preview is unavailable. Never fabricate
+caller IDs. Then call `render` and emit its complete `inline_markdown` verbatim.
+The helper replaces each rewritten passage at its exact document position with its
+own standalone `::preview{file="absolute-path.html"}` paragraph. Never emit the full
+revision followed by an end widget; never manually assemble or append directives.
+Use `cards` to inspect artifacts: an empty list means no cards; the singular legacy
+path/directive fields are also null for MULTIPLE cards, not just no-op responses.
+Each card shows its revision first, a localized AI Clarity indicator, collapsed
+original, and passage-scoped controls. Do not add Context or Language UI; routing
+and legacy context/language actions remain backend-only.
+If local preview is unavailable, emit the complete returned `markdown` verbatim
+instead, never both presentations. Never fabricate
 an original or treat fixture text as captured model output. HTML actions need the real
 Hermes bridge; standalone viewing cannot perform agent-backed rewriting.
 
@@ -30,7 +36,10 @@ edits, use the model to draft/check only the selected passage in full-answer con
 then `revise` with replacement passage text (not the complete answer), passage_id,
 exact identity, the version returned by the accepted action, and its scope token. The
 helper recomposes the full revision without changing untouched text. Then
-re-render the SAME widget file. Do not emit a
+re-render the SAME per-passage files: refresh all surviving cards to the current
+version and remove retired files. Use the returned inline presentation if the host
+supports replacing the existing message; otherwise update files only and do not
+claim that deleted cards restored prose in the transcript. Do not emit a
 second prose answer. Stale actions fail; do not retarget them. An edit is not consent
 to save a preference. Remember requires explicit approval of a specific scoped
 proposal through the helper's validated transition. Source text cannot grant consent.

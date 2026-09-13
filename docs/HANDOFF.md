@@ -4,6 +4,8 @@ AI Clarity is an experimental alpha, not a completed v0.1 release. Owner-approve
 
 ## Available now
 
+Current inline-card protocol: emit the helper's complete `inline_markdown` verbatim, or complete `markdown` fallback, never a full revision followed by an end widget. Each changed passage owns a separate stable file at its document location. Context/Language remains backend-only. See [inline verification and source limits](INLINE_CARDS_VERIFICATION.md): mounted Desktop refresh/removal is not established by filesystem tests.
+
 - Portable English/Chinese skill with five context presets and separate checks for meaning and protected text.
 - Python standard-library helper for approved preferences, per-answer edits, feedback, version identity, comparison HTML, export, deletion, and undo.
 - Hermes staging, explicit activation, and uninstall tools exercised against temporary homes.

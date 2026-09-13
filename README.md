@@ -11,12 +11,15 @@ An open-source skill project to make AI answers easier to understand and follow,
 - Instruct the host to check human-facing answers automatically and rewrite only when useful; compliance is best-effort.
 - Use lightweight presets for general explanations, academic research, business reports, product design, and code explanations.
 - Support English and Chinese, including localized controls and explicit language overrides.
-- Show the complete clearer answer inline, outside the widget. Compact comparisons show only changed passages, revision first and collapsible original; unchanged text is not duplicated. No rewrite means no card or buttons.
+- Show the complete accepted answer in document order. Each rewritten passage is replaced at its location by its own card: revised text first, a localized “Revised by AI Clarity” indicator, and a collapsed “Show original” disclosure. Unchanged text remains outside cards, exactly once. No rewrite means no card or buttons.
 - Offer passage-targeted edits and feedback without requiring a slash command. The model identifies exact changed sentences/paragraphs after semantic review; the helper validates mappings and assigns opaque IDs.
+- Keep Shorter, Steps, Example, Helpful, and Not helpful scoped to each passage. No visible Context or Language controls; backend routing, preferences, and legacy actions remain supported.
 - Save approved preferences privately and apply the relevant ones in later sessions. Support inspection, editing, undo, deletion, and export.
 - Preserve meaning, citations, code, commands, warnings, and uncertainty.
 
 The host model performs the rewrite and meaning check. Python handles scoped preferences, protected-literal checks, response versions, and rendering; it does not generate explanations. Hermes Desktop is the first adapter. Automatic checking depends on the model following an always-loaded instruction, not guaranteed interception.
+
+The host emits `render.inline_markdown` verbatim, not the full revision plus an end widget. The helper owns ordered assembly and standalone directive paragraphs; multiple passages produce separate files. Unsupported preview hosts emit the complete `render.markdown` fallback instead. Surviving passage files keep their paths and refresh all action identities after edits; retired files are deleted, including during expiry/reset/migration. Updating or removing already-mounted cards in Desktop remains unverified; source parsing evidence is in [verification](docs/VERIFICATION.md).
 
 ## Product documents
 
