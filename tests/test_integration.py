@@ -47,11 +47,11 @@ class IntegrationTests(unittest.TestCase):
         r = self.cli("capture", {"original":"One. Two.", "revision":"One; two.", "meaning_checked":True})
         self.assertEqual(self.cli("get", {"id":r["id"]})["original"], "One. Two.")
         page = self.cli("render", {"id":r["id"]})
-        pending = self.cli("action", {"id":r["id"], "version":1, "scope":r["scope_token"], "action":"steps"})
-        r2 = self.cli("revise", {"id":r["id"], "version":pending["version"], "scope":r["scope_token"],
+        pending = self.cli("action", {"id":r["id"], "version":1, "scope":r["scope_token"], "passage_id":r['changes'][0]['id'], "action":"steps"})
+        r2 = self.cli("revise", {"id":r["id"], "version":pending["version"], "scope":r["scope_token"], "passage_id":r['changes'][0]['id'],
             "revision":"1. One.\n2. Two.", "meaning_checked":True})
         self.assertEqual(self.cli("render", {"id":r2["id"]})["path"], page["path"])
-        self.cli("action", {"id":r2["id"], "version":r2["version"], "scope":r2["scope_token"], "action":"not_now"})
+        self.cli("action", {"id":r2["id"], "version":r2["version"], "scope":r2["scope_token"], "passage_id":r2['changes'][0]['id'], "action":"not_now"})
         pid = self.cli("profile", {"op":"inspect"})["preferences"][0]["id"]
         self.cli("profile", {"op":"forget", "id":pid})
         self.cli("profile", {"op":"undo"})
@@ -93,11 +93,11 @@ class IntegrationTests(unittest.TestCase):
             parser.feed(markup)
             self.assertNotIn("img", parser.tags)
             self.assertNotIn("script", parser.tags)
-            self.assertEqual(len(parser.prompts), 14)
+            self.assertEqual(len(parser.prompts), 5)
             for prompt in parser.prompts:
                 self.assertLess(len(prompt), 500)
                 envelope = json.loads(prompt.removeprefix("AI_CLARITY "))
-                self.assertEqual(set(envelope), {"id", "version", "scope", "action"})
+                self.assertEqual(set(envelope), {"id", "version", "scope", "passage_id", "action"})
                 self.assertEqual(envelope["scope"], r["scope_token"])
                 self.assertNotIn("img", prompt)
             self.assertIn(c.LABELS[lang][0], markup)
@@ -128,9 +128,9 @@ class IntegrationTests(unittest.TestCase):
             db.execute("UPDATE state SET body=?", ("{bad",))
         with self.assertRaises(ValueError): self.call("prepare", {})
     def test_action_overrides_never_save_and_do_not_retarget(self):
-        r = self.call("capture", {"original":"maybe"})
+        r = self.call("capture", {"original":"maybe", "revision":"perhaps", "meaning_checked":True})
         for selected, value in [("language_zh-Hant", "也許"), ("context_research", "也許如此"), ("language_original", "maybe so")]:
-            envelope = {"id":r["id"], "version":r["version"], "scope":r["scope_token"]}
+            envelope = {"id":r["id"], "version":r["version"], "scope":r["scope_token"], "passage_id":r['changes'][0]['id']}
             pending = self.call("action", {**envelope, "action":selected})
             r = self.call("revise", {**envelope, "version":pending["version"], "revision":value, "meaning_checked":True})
             self.assertIsNone(r["proposal"])

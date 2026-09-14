@@ -1,5 +1,41 @@
 # Verification report
 
+## Inline passage cards checkpoint (current)
+
+The helper now emits complete `inline_markdown` with one per-passage card at each changed location, or complete `markdown` fallback for unsupported preview hosts. Host instructions no longer require a full revision outside an end widget. Context/Language UI is removed; backend routing and legacy actions remain. See [observed RED/GREEN slices, pinned Hermes source, and limits](INLINE_CARDS_VERIFICATION.md).
+
+Executed on Python 3.9.6: targeted inline suite **11 passed**; required full `python3 -m unittest discover -s tests -v` **99 executions passed**; `python3 scripts/verify.py` **99 passed**, **32 static files**, no static errors; `git diff --check` passed. The working-tree total includes unrelated untracked `tests/test_inline.py`, which imports/inherits passage tests and is not part of this commit. An isolated candidate source copy excluding that file and `docs/BUSINESS_VALIDATION.md` passed **74 executions**, **30 static files**, no static errors. These are execution counts, not independent requirements.
+
+The first isolated-copy verification failed once in the existing concurrent fresh-process profile-write test with helper `FileNotFoundError`; an unchanged rerun passed. The intermittent failure's root cause is not established and is not claimed fixed by this card change. Real logs: `.local/verification/inline-clean-first-failure.log`, `inline-clean.log`, `unittest.log`, and `result.json`.
+
+No browser/Desktop visuals or real clicks were exercised in this checkpoint. Upstream source confirms standalone directive paragraphs can appear between normal paragraphs, but its frame read effect depends on path/streaming, not a file watcher. Stable file updates/deletion are tested; automatic mounted-frame refresh and restoration of prose after retiring a card remain host integration gates. No live install or push was performed.
+
+## Earlier passage-scoped checkpoint (superseded presentation)
+
+The following is historical evidence. Its “complete answer outside the widget” pattern and rendered Context/Language controls are superseded by the inline-card checkpoint above; earlier browser evidence does not verify the new per-passage layout.
+
+Local implementation on `widget-contrast-fix`, preserving the body contrast pair from `e9cbf3c`. No live Hermes files were changed, no host was restarted, and no browser dependency was installed.
+
+Final executed checks: `python3 -m unittest discover -s tests -v` passed **63 executions** (51 existing plus 12 passage tests); `python3 scripts/verify.py` passed the same 63 with 28 static files checked and no static errors; `git diff --check` passed. The targeted passage suite passed all 12. Actual final suite output and machine-readable results are under ignored `.local/verification/unittest.log` and `.local/verification/result.json`. RED observations below are from terminal runs, not reconstructed log files.
+
+Observed RED→GREEN slices (each targeted run used `python3 -m unittest discover -s tests -p test_passages.py -v`):
+
+- `test_noop_has_no_widget_even_after_version_history`: RED returned an HTML path at version 9; GREEN returns null path/directive and an empty actionable list.
+- `test_explicit_passage_mapping_is_validated_and_reconstructs`: RED stored zero passages for an explicit mapping; GREEN assigns helper IDs/spans and rejects invalid mappings. Additional rejection subcases cover empty values, caller IDs, duplicate/overlapping regions, ambiguous occurrences in either document, reordered spans, unchanged pairs, and incomplete reconstruction.
+- `test_legacy_capture_uses_paragraphs_or_suppresses_controls`: the original implementation used a whole-answer compatibility target when changed paragraph structure could not be mapped. The owner rejected article-wide controls. GREEN retains the accepted revision with `model-checked-unmapped` status and returns no widget or controls.
+- `test_widget_only_contains_changed_passage_and_opaque_controls`: RED HTML contained the unchanged introduction; GREEN HTML/Markdown omit it, show the revised passage once, and put passage IDs on every control. Includes an explicitly selected sentence inside one paragraph.
+- `test_selected_passage_edit_preserves_other_bytes_and_binds_evidence`: RED accepted a missing passage ID and consumed the pending version (subsequent call then errored stale); GREEN rejects wrong/missing/unknown IDs without consuming the edit, preserves passage 1 and CRLF separators, and binds preference evidence/feedback to passage 2.
+- `test_persisted_passages_fail_closed_and_v1_migration_retires_widgets`: RED loaded missing passage fields; GREEN rejects corrupt schema 2 spans/IDs/references/status and migrates valid schema 1 data while retiring old snapshots/widgets. Approved preferences, profile version, undo history, and explicitly labeled legacy feedback survive.
+- `test_zero_passages_and_rejected_edit_never_leave_actionable_widget`: RED fallback Markdown incorrectly returned the initial original rather than the previously accepted revision; GREEN retains accepted text without controls and deletes the obsolete widget. Also covers zero passages and initial preservation rejection.
+- `test_new_edit_retires_old_undo_capability`: RED kept an older Undo capability during a new pending edit; GREEN retires it without changing approved profile history.
+- `test_passage_offer_preserves_localized_scope_and_saved_acknowledgement`: self-review found a rendering regression; RED showed `en` instead of the existing `English` scope label. GREEN restores localized scope labels and the saved acknowledgement in English/Hans/Hant.
+
+Additional preservation checks passed on first run and are not claimed as independent RED evidence: `test_first_passage_length_change_shifts_only_later_spans`, `test_reverting_passages_retires_ids_and_preserves_remaining_spans`, and `test_passage_html_is_data_and_css_inherits_paired_tokens`. The CSS test checks body card/foreground tokens and white/dark-text standalone fallbacks; buttons inherit that foreground and use the same card token or transparency over the body. A rendered sample was also inspected in a browser with representative light (`#171717` on `#ffffff`, 17.93:1) and dark (`#f3f4f6` on `#1b1d21`, 15.34:1) host variables; both screenshots were readable and contained only the changed passage. This is browser evidence, not live Hermes Desktop theme proof.
+
+Compatibility: capture without `changes` remains supported, but old action/revise envelopes without `passage_id` now fail closed. Schema 1 is validated then migrated to schema 2; old response-wide capabilities are retired rather than guessed into passage capabilities. Explicit mappings remain model-reviewed input; the helper proves reconstruction, not semantic selection. Context/language controls also target a passage, changing response routing metadata but not untouched passage text. See the helper workflow for limits.
+
+Remaining gates: live Desktop light/dark screenshots, actual bridge button dispatch, removal/update behavior when the last card disappears, full-answer display outside the widget, model compliance with semantic passage selection, and independent semantic/human evaluation. This worker performed self-review and deterministic tests, not an independent reviewer-agent sign-off.
+
 ## Status
 
 Hook-activation checkpoint: **50 test executions passed** (including the existing 43); `scripts/verify.py` also passed with no static errors. The new hook is a tested gate + passthrough partial, not an activation fix: subprocess rewriting is hard-blocked due to oneshot auto-approval, and helper integration is deferred. Desktop streaming/preview paths were source-traced, not live-tested. See [HOOK_DESIGN.md](HOOK_DESIGN.md).
@@ -32,6 +68,8 @@ CI runs the same verification on push/PR to `main` across ubuntu-latest and maco
 ## Parent RED/GREEN record
 
 These are observed failures, not reconstructed results:
+
+- Owner-reported, screenshot-grounded dark-theme widget contrast fix: the body background/foreground regression failed RED on `transparent` (1 test, 1 failure), then passed GREEN with `background:var(--card,#fff)` paired with `color:var(--foreground,#222)` (full suite: 51 passed); logs: `.local/verification/widget-contrast-{red,green}.log`; live Desktop visual recheck remains pending.
 
 1. The initial suite ran 35 tests with four subtest errors. The integration loop expected `original` on multi-turn evaluation protocols that intentionally have no source answer. The test now validates those protocol records separately and executes routing on input scenarios. The suite then passed.
 2. New exact-output tests failed because `prepare` and `capture` created private directories before bypassing output handling. Dispatch now bypasses storage first. Both regressions passed.
